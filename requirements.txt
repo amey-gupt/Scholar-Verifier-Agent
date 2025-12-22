@@ -1,0 +1,5 @@
+openai
+semanticscholar
+rich
+python-dotenv
+requests
