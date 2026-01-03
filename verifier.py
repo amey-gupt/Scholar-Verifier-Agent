@@ -1,28 +1,24 @@
 import os
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict
 from rich.console import Console
 from rich.table import Table
 from rich.progress import track
-from openai import OpenAI
 from semanticscholar import SemanticScholar
 from dotenv import load_dotenv
-from itertools import islice
 import requests
 import time
+from google import genai
+from google.genai import types
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Rich Console for beautiful output
 console = Console()
 
 class RelevanceVerifier:
     def __init__(self, api_key: str):
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-        )
+        self.client = genai.Client(api_key=api_key)
         self.sch = SemanticScholar()
 
     def search_papers(self, query: str, limit: int = 10) -> List[Dict]:
@@ -49,6 +45,8 @@ class RelevanceVerifier:
             payload = r.json()
             data = payload.get("data", [])
 
+            console.print(f"[yellow]Debug: API returned {len(data)} raw results.[/yellow]")
+            
             papers = [
                 {
                     "title": p.get("title"),
@@ -67,8 +65,7 @@ class RelevanceVerifier:
 
     def evaluate_relevance(self, query: str, paper: Dict) -> Dict:
         """
-        Uses LLM to score relevance and extract evidence.
-        Implements the 'Evidence Reranking' technique from PaperQA2.
+        Uses Gemini Native API to score relevance.
         """
         prompt = f"""
         You are a strict scientific reviewer. Analyze the abstract below for the query: "{query}".
@@ -82,13 +79,18 @@ class RelevanceVerifier:
         Abstract: {paper['abstract']}
         """
 
-        response = self.client.chat.completions.create(
-            model="gemini-1.5-flash",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        
-        return json.loads(response.choices[0].message.content)
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
+            return {"score": 0, "is_relevant": False, "evidence": None, "reasoning": "Error"}
 
     def run_workflow(self, query: str):
         # Step 1: Get Raw Data
@@ -97,7 +99,6 @@ class RelevanceVerifier:
         # Step 2: Agentic Verification Loop
         verified_papers = []
         
-        # 'track' creates a progress bar for the video!
         for paper in track(raw_papers, description="[yellow]🤖 Verifying papers...[/yellow]"):
             analysis = self.evaluate_relevance(query, paper)
             
@@ -117,7 +118,6 @@ class RelevanceVerifier:
         table.add_column("Title", style="cyan", no_wrap=True)
         table.add_column("Extracted Evidence", style="green")
 
-        # Sort by score (Highest first)
         papers.sort(key=lambda x: x['score'], reverse=True)
 
         for p in papers:
@@ -131,7 +131,7 @@ class RelevanceVerifier:
         console.print(table)
         console.print(f"\n[bold]Summary:[/bold] Filtered {len(papers)} relevant papers from raw search.")
 
-# --- Main Execution ---
+
 if __name__ == "__main__": 
     
     api_key = os.getenv("GEMINI_API_KEY")
@@ -140,5 +140,4 @@ if __name__ == "__main__":
         console.print("[red]Error: Please set GEMINI_API_KEY environment variable.[/red]")
     else:
         agent = RelevanceVerifier(api_key)
-        # We use your 'Cross-Correlation' query to show the filtering power!
-        agent.run_workflow("Cross-correlation algorithms for synchronizing IMU and camera timestamps")
+        agent.run_workflow("IMU camera synchronization cross-correlation")
