@@ -10,8 +10,8 @@ import requests
 import time
 from google import genai
 from google.genai import types
+from rich.panel import Panel 
 
-# Load environment variables
 load_dotenv()
 
 console = Console()
@@ -109,6 +109,62 @@ class RelevanceVerifier:
                 verified_papers.append(paper)
 
         # Step 3: Display Results
+        self.display_results(query, verified_papers)
+
+    
+    def run_workflow_verbose(self, query: str):
+        # Step 1: Get Raw Data
+        raw_papers = self.search_papers(query)
+        
+        # Step 2: Agentic Verification Loop
+        verified_papers = []
+        
+        console.print(f"\n[bold yellow]🤖 Agentic Verification Protocol Initiated...[/bold yellow]")
+        console.print(f"[dim]Analyzing {len(raw_papers)} candidates against query: '{query}'[/dim]\n")
+        
+        
+        for i, paper in enumerate(raw_papers, 1):
+            
+            
+            console.rule(f"[bold]Paper {i}/{len(raw_papers)}[/bold]")
+            console.print(f"📄 [bold]{paper['title']}[/bold]")
+            
+            
+            with console.status("[bold cyan]Reading abstract & reasoning...[/bold cyan]", spinner="dots"):
+                analysis = self.evaluate_relevance(query, paper)
+                time.sleep(1.0)
+            
+            score = analysis['score']
+            reasoning = analysis['reasoning']
+            is_match = analysis['is_relevant']
+            
+            if is_match:
+                
+                panel_content = (
+                    f"[bold]Score:[/bold] {score}/10\n"
+                    f"[bold]Decision:[/bold] ACCEPT ✅\n"
+                    f"[bold]Reasoning:[/bold] {reasoning}\n"
+                    f"[bold]Evidence:[/bold] [italic]\"{analysis['evidence']}\"[/italic]"
+                )
+                console.print(Panel(panel_content, style="green", title="RELEVANT"))
+                
+                
+                paper['score'] = score
+                paper['evidence'] = analysis['evidence']
+                paper['reasoning'] = reasoning
+                verified_papers.append(paper)
+            else:
+                
+                panel_content = (
+                    f"[bold]Score:[/bold] {score}/10\n"
+                    f"[bold]Decision:[/bold] REJECT ❌\n"
+                    f"[bold]Reasoning:[/bold] {reasoning}"
+                )
+                console.print(Panel(panel_content, style="red", title="IRRELEVANT"))
+                
+            console.print("\n") 
+
+        # Step 3: Display Final Summary
         self.display_results(query, verified_papers)
 
     def display_results(self, query: str, papers: List[Dict]):
