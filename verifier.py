@@ -196,4 +196,4 @@ if __name__ == "__main__":
         console.print("[red]Error: Please set GEMINI_API_KEY environment variable.[/red]")
     else:
         agent = RelevanceVerifier(api_key)
-        agent.run_workflow("IMU camera synchronization cross-correlation")
+        agent.run_workflow("IMU camera synchronization cross-correlation") #can switch to run_workflow_verbose() for detailed output
